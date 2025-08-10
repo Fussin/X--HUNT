@@ -1,0 +1,70 @@
+name: CI - Build, Lint, Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint-go:
+    name: Lint Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: v1.55
+          args: --verbose
+
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python linters
+        run: pip install ruff black
+
+      - name: Run ruff
+        run: ruff check .
+
+      - name: Run black
+        run: black --check .
+
+  lint-js:
+    name: Lint JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        run: npm --prefix web-ui/frontend install
+
+      - name: Run ESLint
+        run: npm --prefix web-ui/frontend run lint
+
+      - name: Run Prettier check
+        run: npm --prefix web-ui/frontend exec prettier -- --check .

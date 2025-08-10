@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package messagebus;
+
+option go_package = "sentinelx/protos/messagebus";
+
+// Message represents a generic message that can be passed on the bus.
+// It allows for different types of payloads.
+message Message {
+  string id = 1;
+  string source_module = 2;
+  int64 timestamp = 3; // Unix timestamp in nanoseconds
+
+  oneof payload {
+    HttpRequest httpRequest = 4;
+    HttpResponse httpResponse = 5;
+    Vulnerability finding = 6;
+  }
+}
+
+// HttpRequest represents an HTTP request.
+message HttpRequest {
+  string method = 1;
+  string url = 2;
+  map<string, string> headers = 3;
+  bytes body = 4;
+}
+
+// HttpResponse represents an HTTP response.
+message HttpResponse {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+  bytes body = 3;
+}
+
+// Vulnerability represents a security finding.
+message Vulnerability {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  enum Severity {
+    INFO = 0;
+    LOW = 1;
+    MEDIUM = 2;
+    HIGH = 3;
+    CRITICAL = 4;
+  }
+  Severity severity = 4;
+  HttpRequest request = 5;
+  HttpResponse response = 6;
+}

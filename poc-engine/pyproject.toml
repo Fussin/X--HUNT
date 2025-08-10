@@ -1,0 +1,11 @@
+[project]
+name = "sentinelx-poc-engine"
+version = "0.1.0"
+description = "Proof of Concept engine for SentinelX"
+requires-python = ">=3.8"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
