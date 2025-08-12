@@ -2,77 +2,78 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
-	"sentinelx/core-proxy/config"
-	"sentinelx/core-proxy/internal/metrics"
-	"sentinelx/core-proxy/internal/proxy"
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"sentinelx/core-proxy/config"
+	"sentinelx/core-proxy/listener"
+	"sentinelx/core-proxy/metrics"
+	tlsmgr "sentinelx/core-proxy/tls"
+)
+
+var (
+	configPath = flag.String("config", "core-proxy/config/example_config.yaml", "Path to config file")
 )
 
 func main() {
-	cfgPath := os.Getenv("COREPROXY_CONFIG")
-	cfg, err := config.LoadConfig(cfgPath)
+	flag.Parse()
+
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatalf("config load: %v", err)
 	}
 
-	tp, err := newTracerProvider()
-	if err != nil {
-		log.Fatalf("Failed to create tracer provider: %v", err)
+	if err := metrics.InitTracing(cfg.Tracing); err != nil {
+		log.Fatalf("tracing init: %v", err)
 	}
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			log.Printf("Error shutting down tracer provider: %v", err)
+	defer metrics.ShutdownTracing(context.Background())
+
+	tlsMgr, err := tlsmgr.NewManager(tlsmgr.Config{
+		RootCertPath: cfg.TLS.RootCA.CertPath,
+		RootKeyPath:  cfg.TLS.RootCA.KeyPath,
+		DefaultTTL:   24 * time.Hour,
+	})
+	if err != nil {
+		log.Fatalf("tls manager: %v", err)
+	}
+
+	// initialize metrics server (Prometheus)
+	if err := metrics.Init(cfg.Metrics); err != nil {
+		log.Fatalf("metrics init: %v", err)
+	}
+	go func() {
+		if cfg.Metrics.Enabled {
+			if err := metrics.Serve(cfg.Metrics); err != nil {
+				log.Printf("metrics server error: %v", err)
+			}
 		}
 	}()
 
-	server, err := proxy.NewServer(cfg)
-	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
+	// create listener manager
+	lm := listener.NewManager(cfg, tlsMgr)
+
+	// start listeners
+	if err := lm.StartAll(); err != nil {
+		log.Fatalf("failed starting listeners: %v", err)
 	}
+	log.Printf("core-proxy started; listeners up")
 
-	if err := server.Start(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+	// graceful shutdown on SIGINT/SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// Start the metrics server.
-	if cfg.Metrics.Enabled {
-		go metrics.Serve(cfg.Metrics.Bind)
-	}
+	<-ctx.Done()
+	log.Printf("shutdown signal received")
 
-	// Wait for shutdown signal.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	// Use graceful shutdown from config.
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Graceful.DrainTimeout.Duration)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Graceful.DrainTimeout.Duration)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server shutdown failed: %v", err)
+	if err := lm.ShutdownAll(shutdownCtx); err != nil {
+		log.Printf("error during shutdown: %v", err)
 	}
-
-	log.Println("Server gracefully stopped")
-}
-
-func newTracerProvider() (*sdktrace.TracerProvider, error) {
-	// TODO: Configure tracer from config.
-	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return nil, err
-	}
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-	)
-	otel.SetTracerProvider(tp)
-	return tp, nil
+	log.Printf("core-proxy stopped gracefully")
 }

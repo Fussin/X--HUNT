@@ -9,13 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"sentinelx/core-proxy/internal/metrics"
 	"sentinelx/core-proxy/internal/storage"
 	"sentinelx/core-proxy/internal/transform"
 	"sentinelx/core-proxy/internal/websocket"
 	"strings"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -68,9 +66,7 @@ func (p *Processor) Process() {
 		_, span := p.tracer.Start(context.Background(), "http1.request")
 		defer span.End()
 
-		metrics.RequestsTotal.Inc()
-		timer := prometheus.NewTimer(metrics.RequestDuration)
-		defer timer.ObserveDuration()
+		// TODO: Re-implement metrics with the new metrics package.
 
 		// Intercept the request.
 		if err := p.transformer.InterceptRequest(req); err != nil {

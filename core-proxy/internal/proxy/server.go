@@ -8,7 +8,6 @@ import (
 	"sentinelx/core-proxy/config"
 	"sentinelx/core-proxy/internal/http1"
 	"sentinelx/core-proxy/internal/http2"
-	"sentinelx/core-proxy/internal/metrics"
 	"sentinelx/core-proxy/internal/storage"
 	tlsmanager "sentinelx/core-proxy/internal/tls"
 	"sync"
@@ -91,7 +90,7 @@ func (s *Server) run(listener net.Listener) {
 
 // handleConnection handles an incoming client connection.
 func (s *Server) handleConnection(clientConn net.Conn) {
-	metrics.ConnectionsTotal.Inc()
+	// TODO: Re-implement metrics with the new metrics package.
 	defer s.wg.Done()
 	defer clientConn.Close()
 
