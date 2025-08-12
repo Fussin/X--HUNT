@@ -10,6 +10,7 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.20.0
 	go.opentelemetry.io/otel/sdk v1.20.0
 	go.opentelemetry.io/otel/trace v1.20.0
+	golang.org/x/net v0.10.0
 )
 
 require (

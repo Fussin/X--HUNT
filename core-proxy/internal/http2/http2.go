@@ -14,12 +14,14 @@ const clientPreface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 // Processor handles a single HTTP/2 connection.
 type Processor struct {
 	clientConn net.Conn
+	conn       *Connection
 }
 
 // NewProcessor creates a new HTTP/2 processor.
 func NewProcessor(clientConn net.Conn) *Processor {
 	return &Processor{
 		clientConn: clientConn,
+		conn:       NewConnection(),
 	}
 }
 
@@ -65,6 +67,18 @@ func (p *Processor) Process() {
 				return
 			}
 			log.Printf("Received SETTINGS frame: %v", settings)
+		case FrameHeaders:
+			headers, err := p.conn.DecodeHeaders(payload)
+			if err != nil {
+				log.Printf("Failed to decode HEADERS frame: %v", err)
+				return
+			}
+			log.Printf("Received HEADERS frame with headers: %v", headers)
+			// Create a new stream if it doesn't exist.
+			if p.conn.GetStream(fh.StreamID) == nil {
+				stream := &Stream{ID: fh.StreamID, State: StreamStateOpen}
+				p.conn.AddStream(stream)
+			}
 		default:
 			// TODO: Handle other frame types.
 		}
