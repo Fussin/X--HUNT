@@ -3,12 +3,18 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"sentinelx/core-proxy/config"
 	"testing"
 	"time"
 )
 
 func TestServer(t *testing.T) {
-	server, err := NewServer("127.0.0.1:0") // Use port 0 to let the OS choose a free port
+	cfg := &config.Config{
+		Listeners: []config.ListenerConfig{
+			{Name: "test", Bind: "127.0.0.1:0"},
+		},
+	}
+	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -27,7 +33,7 @@ func TestServer(t *testing.T) {
 		ServerName:         "localhost",
 	}
 
-	conn, err := tls.Dial("tcp", server.listener.Addr().String(), conf)
+	conn, err := tls.Dial("tcp", server.listeners[0].Addr().String(), conf)
 	if err != nil {
 		t.Fatalf("Failed to connect to server: %v", err)
 	}

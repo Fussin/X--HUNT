@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"sentinelx/core-proxy/config"
 	"sentinelx/core-proxy/internal/http1"
 	"sentinelx/core-proxy/internal/http2"
 	"sentinelx/core-proxy/internal/metrics"
@@ -18,8 +19,8 @@ import (
 
 // Server is the core proxy server.
 type Server struct {
-	addr       string
-	listener   net.Listener
+	config     *config.Config
+	listeners  []net.Listener
 	wg         sync.WaitGroup
 	shutdown   chan struct{}
 	tlsManager *tlsmanager.Manager
@@ -28,18 +29,18 @@ type Server struct {
 }
 
 // NewServer creates a new proxy server.
-func NewServer(addr string) (*Server, error) {
-	tlsManager, err := tlsmanager.NewManager()
+func NewServer(cfg *config.Config) (*Server, error) {
+	tlsManager, err := tlsmanager.NewManager() // TODO: Configure from cfg
 	if err != nil {
 		return nil, err
 	}
-	store, err := storage.NewStore("sentinelx.db")
+	store, err := storage.NewStore("sentinelx.db") // TODO: Configure from cfg
 	if err != nil {
 		return nil, err
 	}
 	tracer := otel.Tracer("sentinelx/core-proxy")
 	return &Server{
-		addr:       addr,
+		config:     cfg,
 		shutdown:   make(chan struct{}),
 		tlsManager: tlsManager,
 		store:      store,
@@ -49,28 +50,28 @@ func NewServer(addr string) (*Server, error) {
 
 // Start starts the proxy server.
 func (s *Server) Start() error {
-	var err error
-	s.listener, err = net.Listen("tcp", s.addr)
-	if err != nil {
-		return err
+	for _, lc := range s.config.Listeners {
+		ln, err := net.Listen("tcp", lc.Bind)
+		if err != nil {
+			return err
+		}
+		s.listeners = append(s.listeners, ln)
+		log.Printf("Proxy server listening on %s", lc.Bind)
+		s.wg.Add(1)
+		go s.run(ln)
 	}
-	log.Printf("Proxy server listening on %s", s.addr)
-
-	s.wg.Add(1)
-	go s.run()
-
 	return nil
 }
 
 // run is the main loop for accepting connections.
-func (s *Server) run() {
+func (s *Server) run(listener net.Listener) {
 	defer s.wg.Done()
 	for {
 		select {
 		case <-s.shutdown:
 			return
 		default:
-			conn, err := s.listener.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
 				// Check if the listener was closed.
 				select {
@@ -130,8 +131,11 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 // Shutdown gracefully shuts down the proxy server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	close(s.shutdown)
-	if err := s.listener.Close(); err != nil {
-		return err
+	for _, ln := range s.listeners {
+		if err := ln.Close(); err != nil {
+			// Log the error but continue trying to close other listeners.
+			log.Printf("Failed to close listener: %v", err)
+		}
 	}
 	if err := s.store.Close(); err != nil {
 		return err

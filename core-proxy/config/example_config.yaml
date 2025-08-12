@@ -1,0 +1,102 @@
+version: "1"
+server:
+  pid_file: /var/run/sentinelx/core-proxy.pid
+  run_as_user: sentinelx
+  max_open_files: 65536
+  tcp_keepalive: "300s"
+
+listeners:
+  - name: http
+    bind: 0.0.0.0:8080
+    protocol_hint: http
+    backlog: 1024
+    tcp_nodelay: true
+    tls:
+      enabled: false
+
+  - name: https
+    bind: 0.0.0.0:8443
+    protocol_hint: https
+    backlog: 4096
+    tcp_nodelay: true
+    tls:
+      enabled: true
+    alpn:
+      - "h2"
+      - "http/1.1"
+
+tls:
+  root_ca:
+    cert_path: /etc/sentinelx/ca/root.crt
+    key_path: /etc/sentinelx/ca/root.key
+    private_key_protection: filesystem
+  dynamic_cert_cache:
+    enabled: true
+    cache_dir: /var/lib/sentinelx/certs
+    max_items: 20000
+    eviction_policy: lru
+  min_version: "1.2"
+
+multiplexer:
+  alpn_priority:
+    - h2
+    - http/1.1
+  sniff_bytes: 512
+  sniff_timeout: "200ms"
+
+connection_pool:
+  max_global: 200000
+  per_listener_max: 100000
+  per_origin_pool_size: 100
+  idle_timeout: "60s"
+  read_buffer: 32768
+  write_buffer: 32768
+
+backpressure:
+  queue_size: 10000
+  high_watermark_pct: 85
+  low_watermark_pct: 60
+  policy: slow_down
+
+graceful_shutdown:
+  enabled: true
+  drain_timeout: "90s"
+  stop_accept_after: "10s"
+
+logging:
+  level: info
+  format: json
+  output: stdout
+  rotate:
+    enabled: true
+    max_size_mb: 200
+    max_backups: 7
+    max_age_days: 30
+
+metrics:
+  enabled: true
+  bind: 127.0.0.1:9100
+  path: /metrics
+  namespace: sentinelx_coreproxy
+
+tracing:
+  enabled: true
+  otlp_endpoint: "http://otel-collector.local:4318"
+  sampler: parentbased_always_on
+
+admin_api:
+  enabled: true
+  bind: 127.0.0.1:6060
+  auth_token: "env:ADMIN_API_TOKEN"
+
+hot_reload:
+  enabled: true
+  watch_paths:
+    - /etc/sentinelx/config/*.yaml
+  debounce_ms: 1000
+
+security:
+  min_tls_version: "1.2"
+  allowed_ciphers: []
+  drop_privileges: true
+  chroot: /var/empty

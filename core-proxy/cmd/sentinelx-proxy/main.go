@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sentinelx/core-proxy/config"
 	"sentinelx/core-proxy/internal/metrics"
 	"sentinelx/core-proxy/internal/proxy"
 	"syscall"
@@ -16,6 +17,12 @@ import (
 )
 
 func main() {
+	cfgPath := os.Getenv("COREPROXY_CONFIG")
+	cfg, err := config.LoadConfig(cfgPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
 	tp, err := newTracerProvider()
 	if err != nil {
 		log.Fatalf("Failed to create tracer provider: %v", err)
@@ -26,7 +33,7 @@ func main() {
 		}
 	}()
 
-	server, err := proxy.NewServer(":8080")
+	server, err := proxy.NewServer(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
@@ -36,16 +43,18 @@ func main() {
 	}
 
 	// Start the metrics server.
-	go metrics.Serve(":9090")
+	if cfg.Metrics.Enabled {
+		go metrics.Serve(cfg.Metrics.Bind)
+	}
 
 	// Wait for shutdown signal.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	// Shutdown the server.
+	// Use graceful shutdown from config.
 	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Graceful.DrainTimeout.Duration)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
@@ -56,6 +65,7 @@ func main() {
 }
 
 func newTracerProvider() (*sdktrace.TracerProvider, error) {
+	// TODO: Configure tracer from config.
 	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 	if err != nil {
 		return nil, err
