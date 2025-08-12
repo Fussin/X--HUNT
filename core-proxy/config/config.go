@@ -15,20 +15,20 @@ import (
 // Config is the root configuration structure for core-proxy.
 type Config struct {
 	Version         string            `mapstructure:"version"`
-	Server          ServerConfig      `mapstructure:"server" validate:"required,dive"`
+	Server          *ServerConfig      `mapstructure:"server" validate:"required"`
 	Listeners       []ListenerConfig  `mapstructure:"listeners" validate:"required,min=1,dive"`
-	TLS             TLSConfig         `mapstructure:"tls" validate:"required,dive"`
-	Multiplexer     MultiplexerConfig `mapstructure:"multiplexer" validate:"dive"`
-	ConnectionPool  ConnPoolConfig    `mapstructure:"connection_pool" validate:"dive"`
-	RateLimiter     RateLimiterConfig `mapstructure:"rate_limiter" validate:"dive"`
-	Backpressure    BackpressureCfg   `mapstructure:"backpressure" validate:"dive"`
-	Graceful        GracefulCfg       `mapstructure:"graceful_shutdown" validate:"dive"`
-	Logging         LoggingConfig     `mapstructure:"logging" validate:"dive"`
-	Metrics         MetricsConfig     `mapstructure:"metrics" validate:"dive"`
-	Tracing         TracingConfig     `mapstructure:"tracing" validate:"dive"`
-	AdminAPI        AdminAPIConfig    `mapstructure:"admin_api" validate:"dive"`
-	HotReload       HotReloadConfig   `mapstructure:"hot_reload" validate:"dive"`
-	Security        SecurityConfig    `mapstructure:"security" validate:"dive"`
+	TLS             TLSConfig         `mapstructure:"tls" validate:"required"`
+	Multiplexer     MultiplexerConfig `mapstructure:"multiplexer"`
+	ConnectionPool  ConnPoolConfig    `mapstructure:"connection_pool"`
+	RateLimiter     RateLimiterConfig `mapstructure:"rate_limiter"`
+	Backpressure    BackpressureCfg   `mapstructure:"backpressure"`
+	Graceful        GracefulCfg       `mapstructure:"graceful_shutdown"`
+	Logging         LoggingConfig     `mapstructure:"logging"`
+	Metrics         MetricsConfig     `mapstructure:"metrics"`
+	Tracing         TracingConfig     `mapstructure:"tracing"`
+	AdminAPI        AdminAPIConfig    `mapstructure:"admin_api"`
+	HotReload       HotReloadConfig   `mapstructure:"hot_reload"`
+	Security        SecurityConfig    `mapstructure:"security"`
 	Additional      map[string]any    `mapstructure:",remain"` // capture extra fields
 }
 
@@ -202,6 +202,9 @@ var validate = validator.New()
 // SetDefaults applies sane defaults to a Config in-place
 func (c *Config) SetDefaults() {
 	// Server defaults
+	if c.Server == nil {
+		c.Server = &ServerConfig{}
+	}
 	if c.Server.MaxOpenFiles == 0 {
 		c.Server.MaxOpenFiles = 65536
 	}
