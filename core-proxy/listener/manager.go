@@ -43,72 +43,96 @@ func (m *Manager) StartAll() error {
 	}
 	for i := range m.cfg.Listeners {
 		lc := m.cfg.Listeners[i]
-		mux := http.NewServeMux()
-		// Replace with multiplexer later
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			ctx := r.Context()
-			// simple hello
-			w.Header().Set("X-SentinelX", "core-proxy")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("ok\n"))
-
-			// record metrics/tracing
-			duration := time.Since(start).Seconds()
-			metrics.RecordRequest(ctx, lc.Name, r.Method, http.StatusOK, duration)
-		})
-
-		srv := &http.Server{
-			Handler:      mux,
-			ReadTimeout:  time.Duration(lc.IdleTimeout.Duration),
-			WriteTimeout: time.Duration(lc.IdleTimeout.Duration),
+		if err := m.StartListener(context.Background(), lc); err != nil {
+			return err
 		}
-
-		addr := lc.Bind
-		var ln net.Listener
-		var err error
-
-		if lc.TLS.Enabled {
-			// configure tls.Config with GetCertificate callback
-			tcfg := &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				NextProtos: lc.ALPN,
-				GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-					// ask tlsManager to generate a cert for SNI (or use IP)
-					name := hello.ServerName
-					if name == "" {
-						name = hello.Conn.RemoteAddr().String()
-					}
-					certPEM, keyPEM, err := m.tlsManager.GenerateLeafForHost([]string{name})
-					if err != nil {
-						return nil, err
-					}
-					cert, err := tls.X509KeyPair(certPEM, keyPEM)
-					if err != nil { return nil, err }
-					return &cert, nil
-				},
-			}
-			ln, err = tls.Listen("tcp", addr, tcfg)
-		} else {
-			ln, err = net.Listen("tcp", addr)
-		}
-		if err != nil {
-			return fmt.Errorf("bind %s: %w", addr, err)
-		}
-
-		m.servers[lc.Name] = srv
-		m.listeners[lc.Name] = ln
-
-		m.wg.Add(1)
-		go func(name string, srv *http.Server, ln net.Listener, lc cfg.ListenerConfig) {
-			defer m.wg.Done()
-			log.Printf("listener %s serving on %s (tls=%v)", name, ln.Addr(), lc.TLS.Enabled)
-			if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-				log.Printf("listener %s error: %v", name, err)
-			}
-		}(lc.Name, srv, ln, lc)
 	}
 	return nil
+}
+
+func (m *Manager) StartListener(ctx context.Context, lc cfg.ListenerConfig) error {
+	mux := http.NewServeMux()
+	// Replace with multiplexer later
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ctx := r.Context()
+		// simple hello
+		w.Header().Set("X-SentinelX", "core-proxy")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+
+		// record metrics/tracing
+		duration := time.Since(start).Seconds()
+		metrics.RecordRequest(ctx, lc.Name, r.Method, http.StatusOK, duration)
+	})
+
+	srv := &http.Server{
+		Handler:      mux,
+		ReadTimeout:  time.Duration(lc.IdleTimeout.Duration),
+		WriteTimeout: time.Duration(lc.IdleTimeout.Duration),
+	}
+
+	addr := lc.Bind
+	var ln net.Listener
+	var err error
+
+	if lc.TLS.Enabled {
+		// configure tls.Config with GetCertificate callback
+		tcfg := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			NextProtos: lc.ALPN,
+			GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				// ask tlsManager to generate a cert for SNI (or use IP)
+				name := hello.ServerName
+				if name == "" {
+					name = hello.Conn.RemoteAddr().String()
+				}
+				certPEM, keyPEM, err := m.tlsManager.GenerateLeafForHost([]string{name})
+				if err != nil {
+					return nil, err
+				}
+				cert, err := tls.X509KeyPair(certPEM, keyPEM)
+				if err != nil { return nil, err }
+				return &cert, nil
+			},
+		}
+		ln, err = tls.Listen("tcp", addr, tcfg)
+	} else {
+		ln, err = net.Listen("tcp", addr)
+	}
+	if err != nil {
+		return fmt.Errorf("bind %s: %w", addr, err)
+	}
+
+	m.servers[lc.Name] = srv
+	m.listeners[lc.Name] = ln
+
+	m.wg.Add(1)
+	go func(name string, srv *http.Server, ln net.Listener, lc cfg.ListenerConfig) {
+		defer m.wg.Done()
+		log.Printf("listener %s serving on %s (tls=%v)", name, ln.Addr(), lc.TLS.Enabled)
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("listener %s error: %v", name, err)
+		}
+	}(lc.Name, srv, ln, lc)
+	return nil
+}
+
+func (m *Manager) UpdateListener(ctx context.Context, ch ChangedListener) error {
+	// TODO: Implement this.
+	return nil
+}
+
+func (m *Manager) DrainAndStopListener(ctx context.Context, l cfg.ListenerConfig, deadline time.Duration) error {
+	// TODO: Implement this.
+	return nil
+}
+
+func (m *Manager) HasListener(name string) bool {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	_, ok := m.listeners[name]
+	return ok
 }
 
 func (m *Manager) ShutdownAll(ctx context.Context) error {
