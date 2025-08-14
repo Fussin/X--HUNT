@@ -1,0 +1,11 @@
+[project]
+name = "blackphoenix-vuln-scanner"
+version = "0.1.0"
+description = "Vulnerability scanning module for blackphoenix"
+requires-python = ">=3.8"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
