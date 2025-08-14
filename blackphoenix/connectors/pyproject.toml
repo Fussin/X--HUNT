@@ -1,0 +1,11 @@
+[project]
+name = "blackphoenix-connectors"
+version = "0.1.0"
+description = "Connectors module for blackphoenix (HackerOne, Bugcrowd, etc.)"
+requires-python = ">=3.8"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
